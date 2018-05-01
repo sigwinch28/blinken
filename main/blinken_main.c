@@ -33,7 +33,7 @@ typedef struct {
 #define BLINKEN_CHW_GPIO    CONFIG_W_GPIO  // GPIO output for white strip
 #define BLINKEN_CHW_CHANNEL LEDC_CHANNEL_3 // LEDC channel for white strip
 
-void set_channel(value_t val, ledc_channel_t channel, int time) {
+static inline void set_channel(value_t val, ledc_channel_t channel, int time) {
   uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
   ESP_LOGI(TAG, "Setting channel %d to %d (%d duty over %dms)", channel, val, duty, time);
   ledc_set_fade_with_time(BLINKEN_MODE, channel, duty, time);
@@ -122,10 +122,10 @@ void app_main()
     set_channels(&cfg);
     vTaskDelay(3000 / portTICK_PERIOD_MS);
 
-    cfg.red = 255;
-    cfg.green = 255;
-    cfg.blue = 255;
-    cfg.white = 255;
+    cfg.red = VALUE_T_MAX;
+    cfg.green = VALUE_T_MAX;
+    cfg.blue = VALUE_T_MAX;
+    cfg.white = VALUE_T_MAX;
 
     set_channels(&cfg);
     vTaskDelay(3000/ portTICK_PERIOD_MS);
