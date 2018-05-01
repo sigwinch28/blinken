@@ -1,0 +1,42 @@
+menu "Blinken Configuration"
+
+config PWM_HZ
+    int "PWM Frequency (Hz)"
+        range 0 78125
+	default 5000
+	help
+	        Frequency for LED PWM.
+
+                Max value calculated by (80000000/(1 << pwm_resolution)).
+		pwm_clock=80000000 // (80MHz)
+		pwm_resolution=10  // 10 bit
+
+config R_GPIO
+    int "GPIO Pin (Red Channel)"
+        range 0 34
+	default 5
+	help
+	        GPIO number (IOxx) to use for red LED strip.
+
+config G_GPIO
+    int "GPIO Pin (Green Channel)"
+        range 0 34
+	default 6
+	help
+	        GPIO number (IOxx) to use for green LED strip.
+
+config B_GPIO
+    int "GPIO Pin (Blue Channel)"
+        range 0 34
+	default 7
+	help
+	        GPIO number (IOxx) to use for blue LED strip.
+
+config W_GPIO
+    int "GPIO Pin (White Channel)"
+        range 0 34
+	default 8
+	help
+	        GPIO number (IOxx) to use for white LED strip.
+
+endmenu
