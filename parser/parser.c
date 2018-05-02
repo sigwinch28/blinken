@@ -1,8 +1,4 @@
-
-static const char *TAG = "blinken";
-#include "esp_log.h"
-
-#include "blinken.h"
+#include "parser.h"
 
 char *field_parse(field_t *cmd, const char *ptr) {
   switch (*ptr) {
@@ -11,8 +7,8 @@ char *field_parse(field_t *cmd, const char *ptr) {
   case FIELD_BLUE:
   case FIELD_WHITE:
   case FIELD_TIME:
-    *cmd = *ptr;
-    return (char *)ptr++;
+    *cmd = *(ptr++);
+    return (char *) ptr;
   default:
     return (char *)ptr;
   }
@@ -31,13 +27,14 @@ char *value_parse(value_t *val, const char *ptr) {
     char digit;
     char *res = digit_parse(&digit, ptr);
     if (res == ptr) {
-      return orig;
+      return (char*) ptr;
     }
 
-    if (((*ptr) * 10) + digit <= VALUE_T_MAX) {
+    if (((*val) * 10) + digit <= VALUE_T_MAX) {
       *val *= 10;
-      val += digit;
+      *val += digit;
     } else {
+      *val = 0;
       return orig;
     }
   }

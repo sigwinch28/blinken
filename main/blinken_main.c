@@ -7,7 +7,7 @@
 static const char *TAG = "blinken";
 #include "esp_log.h"
 
-#include "blinken.h"
+#include "blinken_main.h"
 
 static inline void set_channel(value_t val, ledc_channel_t channel, int time) {
   uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
