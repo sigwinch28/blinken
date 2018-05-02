@@ -1,4 +1,4 @@
-CFLAGS += -I$(UNITY_PATH)/src -I../parser
+CFLAGS += -I$(UNITY_PATH)/src -I../include
 
 BIN = test_parser
 
@@ -7,7 +7,7 @@ BIN = test_parser
 
 all: test
 
-OBJS = $(BIN).o $(UNITY_PATH)/src/unity.o ../parser/parser.o
+OBJS = $(BIN).o $(UNITY_PATH)/src/unity.o ../include/parser.o
 
 test_parser: $(OBJS)
 #	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@

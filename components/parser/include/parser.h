@@ -23,6 +23,8 @@ typedef enum {
 
 void blinken_init(blinken_t*);
 
+void blinken_copy(blinken_t*, blinken_t*);
+
 char *field_parse(field_t*, const char*);
 
 char *digit_parse(char*, const char*);

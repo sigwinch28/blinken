@@ -1,5 +1,24 @@
 #include "parser.h"
 
+void blinken_init(blinken_t *b) {
+  b->red = 0;
+  b->green = 0;
+  b->blue = 0;
+  b->white = 0;
+  b->time = 0;
+}
+
+/*
+y is target
+*/
+void blinken_copy(blinken_t *x, blinken_t *y) {
+  y->red = x->red;
+  y->green = x->green;
+  y->blue = x->blue;
+  y->white = x->white;
+  y->time = x->time;
+}
+
 char *field_parse(field_t *cmd, const char *ptr) {
   switch (*ptr) {
   case FIELD_RED:
@@ -46,25 +65,20 @@ char *fade_time_parse(fade_time_t *val, const char *ptr) {
     char digit;
     char *res = digit_parse(&digit, ptr);
     if (res == ptr) {
-      return orig;
+      return (char*) ptr;
     }
 
-    if (((*ptr) * 10) + digit <= FADE_TIME_T_MAX) {
+    if (((*val) * 10) + digit <= FADE_TIME_T_MAX) {
       *val *= 10;
-      val += digit;
+      *val += digit;
     } else {
+      *val = 0;
       return orig;
     }
   }
 }
 
-void blinken_init(blinken_t *b) {
-  b->red = 0;
-  b->green = 0;
-  b->blue = 0;
-  b->white = 0;
-  b->time = 0;
-}
+
 
 char *blinken_parse(blinken_t *cfg, const char *ptr) {
   blinken_init(cfg);
