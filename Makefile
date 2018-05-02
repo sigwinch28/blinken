@@ -8,4 +8,4 @@ include $(IDF_PATH)/make/project.mk
 
 compile_commands.json:
 	+bear --append --use-cc $(CC) $(MAKE)
-	+bear --append --use-cc $(CC) $(MAKE) -C test
+
