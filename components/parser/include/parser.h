@@ -1,6 +1,10 @@
 #pragma once
+#include <stddef.h>
 #include <limits.h>
 #include <stdint.h>
+
+#define PARSER_BUF_LEN 32
+#define PARSER_BUF_LEN_INT 8
 
 typedef uint8_t value_t;
 #define VALUE_T_MAX UINT8_MAX
@@ -25,12 +29,8 @@ void blinken_init(blinken_t*);
 
 void blinken_copy(blinken_t*, blinken_t*);
 
-char *field_parse(field_t*, const char*);
-
-char *digit_parse(char*, const char*);
-
-char *value_parse(value_t*, const char*);
-
-char *fade_time_parse(fade_time_t*, const char*);
-
 char *blinken_parse(blinken_t*, const char*);
+
+int blinken_snprint(char**, size_t, blinken_t*);
+
+

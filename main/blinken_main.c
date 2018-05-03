@@ -1,5 +1,6 @@
 #include "esp_err.h"
 #include "esp_event_loop.h"
+#include "esp_log.h"
 #include "esp_wifi.h"
 
 #include "freertos/FreeRTOS.h"
@@ -8,18 +9,20 @@
 
 #include "driver/ledc.h"
 
+#include "coap.h"
+#include "nvs_flash.h"
+
 #include <stdio.h>
 
 static const char *TAG = "blinken";
-#include "esp_log.h"
 
 #include "blinken_main.h"
 #include "parser.h"
 
-#include "coap.h"
-
 static EventGroupHandle_t wifi_event_group;
 const static int CONNECTED_BIT = BIT0;
+
+static blinken_t b;
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
   switch(event->event_id) {
@@ -53,6 +56,7 @@ static void wifi_conn_init() {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
   ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
+
   wifi_config_t wifi_config = {
     .sta = {
       .ssid = BLINKEN_WIFI_SSID,
@@ -73,10 +77,12 @@ led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
 		coap_pdu_t *request, str *token, coap_pdu_t *response)
 {
   unsigned char buf[3];
-  const char* response_data = "Hello World!";
+  char data[PARSER_BUF_LEN];
+  char *ptr = data;
+  int len = blinken_snprint(&ptr, PARSER_BUF_LEN, &b);
   response->hdr->code = COAP_RESPONSE_CODE(205);
   coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
-  coap_add_data(response, strlen(response_data), (unsigned char *)response_data);
+  coap_add_data(response, len, (unsigned char*)data);
 }
 
 static void coap_thread(void *p) {
@@ -85,7 +91,10 @@ static void coap_thread(void *p) {
   coap_resource_t *led_resource;
   fd_set readfds;
   
-  ESP_LOGI(TAG, "Starting COAP server");
+  ESP_LOGI(TAG, "Starting COAP server. Waiting for WiFi...");
+  xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
+		      false, true, portMAX_DELAY);
+  ESP_LOGI(TAG, "WiFi connected. Continuing with COAP server startup.");
   coap_address_init(&serv_addr);
   serv_addr.addr.sin.sin_family = AF_INET;
   serv_addr.addr.sin.sin_addr.s_addr = INADDR_ANY;
@@ -94,15 +103,15 @@ static void coap_thread(void *p) {
 
   if (ctx) {
     ESP_LOGD(TAG, "Creating COAP resource for GET led");
-    led_resource = coap_resource_init((unsigned char *)"led", 5, 0);
+    led_resource = coap_resource_init((unsigned char *)"led", 3, 0);
     coap_register_handler(led_resource, COAP_REQUEST_GET, led_handler_get);
+    coap_add_resource(ctx, led_resource);
 
     while(1) {
       FD_ZERO(&readfds);
       FD_CLR(ctx->sockfd, &readfds);
       FD_SET(ctx->sockfd, &readfds);
-
-      int result = select (FD_SETSIZE, &readfds, 0, 0, NULL);
+      int result = select(ctx->sockfd+1, &readfds, 0, 0, NULL);
       if (result > 0 && FD_ISSET(ctx->sockfd, &readfds)) {
 	ESP_LOGD(TAG, "Handling incoming COAP request");
 	coap_read(ctx);
@@ -122,6 +131,8 @@ static void coap_thread(void *p) {
 }
 
 static void led_init() {
+  blinken_init(&b);
+  
   ESP_LOGI(TAG, "Initialising LED PWM");
 
   ESP_LOGD(TAG, "Configuring PWM timer");
@@ -165,7 +176,7 @@ static void led_init() {
   ledc_fade_func_install(0);
 }
 
-static inline void set_channel(value_t val, ledc_channel_t channel, int time) {
+static inline void led_set_channel(value_t val, ledc_channel_t channel, int time) {
   uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
   ESP_LOGI(TAG, "Setting LED channel %d to %d (%d duty over %dms)", channel, val,
            duty, time);
@@ -173,15 +184,16 @@ static inline void set_channel(value_t val, ledc_channel_t channel, int time) {
   ledc_fade_start(BLINKEN_MODE, channel, LEDC_FADE_NO_WAIT);
 }
 
-void set_channels(blinken_t *cfg) {
+void led_set() {
   ESP_LOGD(TAG, "Setting all LED channels");
-  set_channel(cfg->red, BLINKEN_CHR_CHANNEL, cfg->time);
-  set_channel(cfg->green, BLINKEN_CHG_CHANNEL, cfg->time);
-  set_channel(cfg->blue, BLINKEN_CHB_CHANNEL, cfg->time);
-  set_channel(cfg->white, BLINKEN_CHW_CHANNEL, cfg->time);
+  led_set_channel(b.red, BLINKEN_CHR_CHANNEL, b.time);
+  led_set_channel(b.green, BLINKEN_CHG_CHANNEL, b.time);
+  led_set_channel(b.blue, BLINKEN_CHB_CHANNEL, b.time);
+  led_set_channel(b.white, BLINKEN_CHW_CHANNEL, b.time);
 }
 
 void app_main() {
+  ESP_ERROR_CHECK( nvs_flash_init() );
   led_init();
   wifi_conn_init();
 

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "parser.h"
+#include "parser.c"
 #include "unity.h"
 
 #include <stdint.h>
@@ -262,6 +262,20 @@ int main() {
   RUN_TEST(test_blinken_parse_null);
   RUN_TEST(test_blinken_parse_all_channels_min);
   RUN_TEST(test_blinken_parse_all_channels_max);
+
+  char res[128];
+  char *f = res;
+  blinken_t b;
+  blinken_init(&b);
+  b.red = 100;
+  b.green = 150;
+  b.blue = 200;
+  b.white = 250;
+  b.time = 3000;
+  
+
+  int x = blinken_snprint(&f, 128, &b);
+  printf("Blinken of %d chars: \"%s\"\n", x, res);
 
   return UNITY_END();
 }
