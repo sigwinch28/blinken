@@ -1,14 +1,14 @@
 #pragma once
 
+#define BLINKEN_WIFI_SSID CONFIG_WIFI_SSID
+#define BLINKEN_WIFI_PASSWORD CONFIG_WIFI_PASSWORD
+
 #define BLINKEN_TIMER LEDC_TIMER_0 // Use first hardware timer
-#define BLINKEN_MODE                                                           \
-  LEDC_HIGH_SPEED_MODE               // Just use high speed (higher resolution)
+#define BLINKEN_MODE LEDC_HIGH_SPEED_MODE // Just use high speed (higher resolution)
 #define BLINKEN_PWM_HZ CONFIG_PWM_HZ // PWM frequency
 #define BLINKEN_RESOLUTION LEDC_TIMER_10_BIT // PWM resolution
-#define BLINKEN_MAX_DUTY                                                       \
-  ((1 << 10) - 1) // Maximum PWM value based on resolution
-#define BLINKEN_MULTIPLIER                                                     \
-  (BLINKEN_MAX_DUTY / CHAR_MAX) // For adjusting value range from 0-255
+#define BLINKEN_MAX_DUTY ((1 << 10) - 1) // Maximum PWM value based on resolution
+#define BLINKEN_MULTIPLIER (BLINKEN_MAX_DUTY / CHAR_MAX) // For adjusting value range from 0-255
 #define BLINKEN_MAP(x) (x * BLINKEN_MAX_DUTY / CHAR_MAX)
 
 #define BLINKEN_CH_NUM (4)                 // Number of LED channels (R,G,B,W)
