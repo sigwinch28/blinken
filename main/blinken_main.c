@@ -24,6 +24,8 @@ const static int CONNECTED_BIT = BIT0;
 
 static blinken_t b;
 
+void led_set();
+
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
   switch(event->event_id) {
   case SYSTEM_EVENT_STA_START:
@@ -72,10 +74,46 @@ static void wifi_conn_init() {
 }
 
 static void
+led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
+		const coap_endpoint_t *local_interface, coap_address_t *peer,
+		coap_pdu_t *request, str *token, coap_pdu_t *response) {
+  size_t size;
+  unsigned char* data;
+  ESP_LOGI(TAG, "PUT /led");
+
+  response->hdr->code = COAP_RESPONSE_CODE(204);
+  resource->dirty = 1;
+
+  coap_get_data(request, &size, &data);
+  char raw[PARSER_BUF_LEN];
+  int len;
+  if (size < PARSER_BUF_LEN-2) {
+    len = size;
+  } else {
+    len = PARSER_BUF_LEN-2;
+  }
+  strncpy(raw, (char*)data, len);
+  raw[len] = '\0';
+
+  blinken_t res;
+  blinken_init(&res);
+  char *ptr = blinken_parse(&res, raw);
+  
+  if (ptr != raw) {
+    ESP_LOGI(TAG, "Setting LEDs: %s", raw);
+    blinken_copy(&res, &b);
+    led_set();
+  } else {
+    ESP_LOGE(TAG, "Invalid payload: %s", raw);
+  }
+}
+
+static void
 led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
 		const coap_endpoint_t *local_interface, coap_address_t *peer,
 		coap_pdu_t *request, str *token, coap_pdu_t *response)
 {
+  ESP_LOGI(TAG, "GET /led");
   unsigned char buf[3];
   char data[PARSER_BUF_LEN];
   char *ptr = data;
@@ -104,7 +142,9 @@ static void coap_thread(void *p) {
   if (ctx) {
     ESP_LOGD(TAG, "Creating COAP resource for GET led");
     led_resource = coap_resource_init((unsigned char *)"led", 3, 0);
+    
     coap_register_handler(led_resource, COAP_REQUEST_GET, led_handler_get);
+    coap_register_handler(led_resource, COAP_REQUEST_PUT, led_handler_put);
     coap_add_resource(ctx, led_resource);
 
     while(1) {
@@ -197,5 +237,5 @@ void app_main() {
   led_init();
   wifi_conn_init();
 
-  xTaskCreate(coap_thread, "coap", 2048, NULL, 5, NULL);
+  xTaskCreate(coap_thread, "coap", 4096, NULL, 5, NULL);
 }
