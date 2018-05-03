@@ -1,5 +1,18 @@
 menu "Blinken Configuration"
 
+
+config WIFI_SSID
+	string "WiFi SSID"
+	default "myssid"
+	help
+		SSID (network name) for the example to connect to.
+
+config WIFI_PASSWORD
+	string "WiFi Password"
+	default "mypassword"
+	help
+		WiFi password (WPA or WPA2) for the example to use.
+
 config PWM_HZ
     int "PWM Frequency (Hz)"
         range 0 78125
