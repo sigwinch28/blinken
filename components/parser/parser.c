@@ -37,7 +37,6 @@ void blinken_copy(blinken_t *x, blinken_t *y) {
 
 
 char *blinken_parse(blinken_t *cfg, const char *ptr) {
-  blinken_init(cfg);
   char *res;
   char *orig = (char *)ptr;
 

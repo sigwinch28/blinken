@@ -96,13 +96,12 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   raw[len] = '\0';
 
   blinken_t res;
-  blinken_init(&res);
+  blinken_copy(&b, &res);
   char *ptr = blinken_parse(&res, raw);
   
   if (ptr != raw) {
     ESP_LOGI(TAG, "Setting LEDs: %s", raw);
-    blinken_copy(&res, &b);
-    led_set();
+    led_set(&res);
   } else {
     ESP_LOGE(TAG, "Invalid payload: %s", raw);
   }
@@ -220,16 +219,30 @@ static inline void led_set_channel(value_t val, ledc_channel_t channel, int time
   uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
   ESP_LOGI(TAG, "Setting LED channel %d to %d (%d duty over %dms)", channel, val,
            duty, time);
+  
   ledc_set_fade_with_time(BLINKEN_MODE, channel, duty, time);
   ledc_fade_start(BLINKEN_MODE, channel, LEDC_FADE_NO_WAIT);
+  /*
+  ledc_set_duty(BLINKEN_MODE, channel, duty);
+  ledc_update_duty(BLINKEN_MODE, channel);
+  */
 }
 
-void led_set() {
+void led_set(blinken_t *new) {
   ESP_LOGD(TAG, "Setting all LED channels");
-  led_set_channel(b.red, BLINKEN_CHR_CHANNEL, b.time);
-  led_set_channel(b.green, BLINKEN_CHG_CHANNEL, b.time);
-  led_set_channel(b.blue, BLINKEN_CHB_CHANNEL, b.time);
-  led_set_channel(b.white, BLINKEN_CHW_CHANNEL, b.time);
+  if (new->red != b.red) {
+    led_set_channel(new->red, BLINKEN_CHR_CHANNEL, new->time);
+  }
+  if (new->green != b.green) {
+    led_set_channel(new->green, BLINKEN_CHG_CHANNEL, new->time);
+  }
+  if (new->blue != b.blue) {
+    led_set_channel(new->blue, BLINKEN_CHB_CHANNEL, new->time);
+  }
+  if (new->white != b.white) {
+    led_set_channel(new->white, BLINKEN_CHW_CHANNEL, new->time);
+  }
+  blinken_copy(new, &b);
 }
 
 void app_main() {
