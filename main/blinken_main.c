@@ -10,55 +10,60 @@
 #include "driver/ledc.h"
 
 #include "coap.h"
+#include "mdns.h"
 #include "nvs_flash.h"
 
 #include <stdio.h>
 
-static const char *TAG = "blinken";
-
 #include "blinken_main.h"
 #include "parser.h"
 
-esp_err_t led_set();
+static const char *TAG = "blinken";
 
-// Wifi initialisation schmoo.
+/*******************************************************************************
+ * Event handling
+ ******************************************************************************/
 static EventGroupHandle_t wifi_event_group;
-const static int CONNECTED_BIT = BIT0;
+const static int IPV4_CONNECTED_BIT = BIT0;
+const static int IPV6_CONNECTED_BIT = BIT1;
 
-// Global LED state.
-static blinken_t b;
-
-/*
-WiFi event handler. Used to manage the connection off-thread.
-*/
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event) {
   switch(event->event_id) {
   case SYSTEM_EVENT_STA_START:
     ESP_LOGI(TAG, "WiFi ready. Connecting.");
     esp_wifi_connect();
     break;
+#if BLINKEN_IPV6
+  case SYSTEM_EVENT_STA_CONNECTED:
+    ESP_LOGD(TAG, "STA connected. Enabling IPv6.");
+    tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA);
+    break;
+#endif
   case SYSTEM_EVENT_STA_GOT_IP:
     ESP_LOGI(TAG, "Got WiFi IP: %s",
 	     ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
-    xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+    xEventGroupSetBits(wifi_event_group, IPV4_CONNECTED_BIT);
+    break;
+  case SYSTEM_EVENT_AP_STA_GOT_IP6:
+    ESP_LOGI(TAG, "Got WiFi IPv6: %s",
+	     ip6addr_ntoa(&event->event_info.got_ip6.ip6_info.ip));
+    xEventGroupSetBits(wifi_event_group, IPV6_CONNECTED_BIT);
     break;
   case SYSTEM_EVENT_STA_DISCONNECTED:
-    /* This is a workaround as ESP32 WiFi libs don't currently
-       auto-reassociate. */
     ESP_LOGI(TAG, "WiFi disconnected. Reconnecting.");
     esp_wifi_connect();
-    xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+    xEventGroupClearBits(wifi_event_group, IPV4_CONNECTED_BIT | IPV6_CONNECTED_BIT);
     break;
   default:
     break;
   }
+  mdns_handle_system_event(ctx, event);
   return ESP_OK;
 }
 
-/*
-Use WiFi values from sdkconfig and connect.
-Uses RAM storage instead of nvram.
-*/
+/*******************************************************************************
+ * WiFi
+ ******************************************************************************/
 static void wifi_conn_init() {
   ESP_LOGI(TAG, "Connecting to WiFi");
   
@@ -83,12 +88,110 @@ static void wifi_conn_init() {
 	   BLINKEN_WIFI_SSID, BLINKEN_WIFI_PASSWORD);
 }
 
-/*
-COAP handler for "/led" PUT requests.
+/*******************************************************************************
+ * LED control
+ ******************************************************************************/
+static blinken_t b;
 
-Reads the request body, attempts to parse according to the line protocol,
-updates the global LED state, and calls the LED setter.
-*/
+static void led_init() {
+  ESP_LOGI(TAG, "Initialising LED PWM");
+
+  // Clear current configuration, ready for future updates via COAP
+  blinken_init(&b);
+
+  ESP_LOGD(TAG, "Configuring PWM timer");
+  ledc_timer_config_t ledc_timer = {
+      .duty_resolution = BLINKEN_RESOLUTION, // resolution of PWM duty
+      .freq_hz = BLINKEN_PWM_HZ,             // frequency of PWM signal
+      .speed_mode = BLINKEN_MODE,            // timer mode
+      .timer_num = BLINKEN_TIMER             // timer index
+  };
+  ledc_timer_config(&ledc_timer);
+
+  struct {
+    int gpio_num;
+    ledc_channel_t channel;
+  } channels[BLINKEN_CH_NUM] = {
+    {.channel  = BLINKEN_CHR_CHANNEL,
+     .gpio_num = BLINKEN_CHR_GPIO
+    },
+    {.channel  = BLINKEN_CHG_CHANNEL,
+     .gpio_num = BLINKEN_CHG_GPIO
+    },
+    {.channel  = BLINKEN_CHB_CHANNEL,
+     .gpio_num = BLINKEN_CHB_GPIO
+    },
+    {.channel  = BLINKEN_CHW_CHANNEL,
+     .gpio_num = BLINKEN_CHW_GPIO
+    },
+  };
+
+  ledc_channel_config_t ch = {
+    .duty = 0,
+    .speed_mode = BLINKEN_MODE,
+    .timer_sel = BLINKEN_TIMER
+  };
+  
+  for (int i = 0; i < BLINKEN_CH_NUM; i++) {
+    ch.channel = channels[i].channel;
+    ch.gpio_num = channels[i].gpio_num;
+    ESP_LOGD(TAG,
+	     "Init LED channel. channel=%d, gpio_num=%d, duty=%d, speed_mode=%d, timer_sel=%d",
+	     ch.channel, ch.gpio_num, ch.duty, ch.speed_mode, ch.timer_sel);
+    ledc_channel_config(&ch);
+  }
+
+  ESP_LOGD(TAG, "Init hardware PWM fading.");
+  ledc_fade_func_install(0);
+}
+
+static inline esp_err_t led_set_duty(ledc_channel_t channel, value_t val, int time) {
+  uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
+  ESP_LOGD(TAG, "Setting LED channel. channel=%d, val=%d, time=%d, duty=%d",
+	   channel, val, time, duty);
+
+  return ledc_set_fade_with_time(BLINKEN_MODE, channel, duty, time);
+}
+
+static inline esp_err_t led_update_duty(ledc_channel_t channel) {
+  ESP_LOGD(TAG, "Updating LED channel. channel=%d", channel);
+  return ledc_fade_start(BLINKEN_MODE, channel, LEDC_FADE_NO_WAIT);
+}
+
+esp_err_t led_set_channel(ledc_channel_t channel, value_t val, int time) {
+  esp_err_t res = led_set_duty(channel, val, time);
+  if (res != ESP_OK) {
+    return res;
+  }
+  return led_update_duty(channel);
+}
+
+esp_err_t led_set(blinken_t *new) {
+  
+  ESP_LOGD(TAG, "Updating all LED channels.");
+  esp_err_t res = ESP_OK;
+
+  ESP_HOLD_ERR(res, led_set_channel(BLINKEN_CHR_CHANNEL, new->red,   new->time));
+  ESP_HOLD_ERR(res, led_set_channel(BLINKEN_CHG_CHANNEL, new->green, new->time));
+  ESP_HOLD_ERR(res, led_set_channel(BLINKEN_CHB_CHANNEL, new->blue,  new->time));
+  ESP_HOLD_ERR(res, led_set_channel(BLINKEN_CHW_CHANNEL, new->white, new->time));
+
+  if (res != ESP_OK && new != &b) {
+    ESP_LOGE(TAG, "Couldn't set all duties. reverting.");
+    b.time = 0;
+    led_set(&b);
+    return res;
+  }
+
+  if (new != &b) {
+    blinken_copy(new, &b);
+  }
+  return res;
+}
+
+/*******************************************************************************
+ * COAP
+ ******************************************************************************/
 static void
 led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
 		const coap_endpoint_t *local_interface, coap_address_t *peer,
@@ -97,6 +200,7 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   unsigned char* data;
   ESP_LOGI(TAG, "PUT /led");
 
+  // Copy and null-terminate the data.
   coap_get_data(request, &size, &data);
   char raw[PARSER_BUF_LEN];
   int len;
@@ -106,13 +210,16 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
     len = PARSER_BUF_LEN-2;
   }
   strncpy(raw, (char*)data, len);
+  // If the copied data is of length `len`, it is not null-terminated, so
+  // we must do it ourselves.
   raw[len] = '\0';
 
   // Make copy of current values for update
   blinken_t res;
   blinken_copy(&b, &res);
   res.time = 0; // We don't want to preserve time
-  
+
+  // Parse the payload
   char *ptr = blinken_parse(&res, raw);
   
   if (ptr != raw) {
@@ -132,10 +239,6 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   }
 }
 
-/*
-COAP handler for "/led" GET.
-Returns current global config.
-*/
 static void
 led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
 		const coap_endpoint_t *local_interface, coap_address_t *peer,
@@ -155,32 +258,41 @@ led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
   coap_add_data(response, len, (unsigned char*)data);
 }
 
-/*
-Initialisation and loop for COAP server.
- */
-static void coap_thread(void *p) {
+static void coap_task(void *p) {
   coap_context_t *ctx;
   coap_address_t serv_addr;
   coap_resource_t *led_resource;
   fd_set readfds;
   
-  ESP_LOGI(TAG, "Starting COAP server. Waiting for WiFi...");
-  xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
+  ESP_LOGD(TAG, "Starting COAP server. Waiting for WiFi...");
+  xEventGroupWaitBits(wifi_event_group, IPV4_CONNECTED_BIT | IPV6_CONNECTED_BIT,
 		      false, true, portMAX_DELAY);
-  ESP_LOGI(TAG, "WiFi connected. Continuing with COAP server startup.");
+  ESP_LOGD(TAG, "WiFi connected. Continuing with COAP server startup.");
+
   coap_address_init(&serv_addr);
+#if BLINKEN_IPV6
+  serv_addr.addr.sin6.sin6_family = AF_INET6;
+  serv_addr.addr.sin6.sin6_addr = in6addr_any;
+  serv_addr.addr.sin6.sin6_port = htons(COAP_DEFAULT_PORT);
+  serv_addr.size = sizeof(serv_addr.addr.sin6);
+#else
   serv_addr.addr.sin.sin_family = AF_INET;
   serv_addr.addr.sin.sin_addr.s_addr = INADDR_ANY;
   serv_addr.addr.sin.sin_port = htons(COAP_DEFAULT_PORT);
+#endif
+
   ctx = coap_new_context(&serv_addr);
 
   if (ctx) {
-    ESP_LOGD(TAG, "Creating COAP resource for GET led");
-    led_resource = coap_resource_init((unsigned char *)"led", 3, 0);
+    ESP_LOGD(TAG, "Creating COAP resource for GET \"/%s\".", BLINKEN_RESOURCE);
+    led_resource = coap_resource_init((unsigned char *)BLINKEN_RESOURCE,
+				      strlen(BLINKEN_RESOURCE), 0);
     
     coap_register_handler(led_resource, COAP_REQUEST_GET, led_handler_get);
     coap_register_handler(led_resource, COAP_REQUEST_PUT, led_handler_put);
     coap_add_resource(ctx, led_resource);
+
+    ESP_LOGI(TAG, "COAP server started.");
 
     while(1) {
       FD_ZERO(&readfds);
@@ -188,7 +300,7 @@ static void coap_thread(void *p) {
       FD_SET(ctx->sockfd, &readfds);
       int result = select(ctx->sockfd+1, &readfds, 0, 0, NULL);
       if (result > 0 && FD_ISSET(ctx->sockfd, &readfds)) {
-	ESP_LOGD(TAG, "Handling incoming COAP request");
+	ESP_LOGD(TAG, "Handling incoming COAP request.");
 	coap_read(ctx);
       } else if (result < 0) {
 	ESP_LOGE(TAG, "COAP socket error.");
@@ -196,7 +308,7 @@ static void coap_thread(void *p) {
       }
     }
 
-    ESP_LOGD(TAG, "Cleaning up COAP context");
+    ESP_LOGD(TAG, "Cleaning up COAP context.");
     coap_free_context(ctx);
   } else {
     ESP_LOGE(TAG, "Couldn't create COAP context.");
@@ -205,139 +317,33 @@ static void coap_thread(void *p) {
   vTaskDelete(NULL);
 }
 
-/*
-Initialise LEDC hardware.
-*/
-static void led_init() {
-  ESP_LOGI(TAG, "Initialising LED PWM");
+/*******************************************************************************
+ * MDNS
+ ******************************************************************************/
 
-  // Clear current configuration, ready for future updates via COAP
-  blinken_init(&b);
+static void app_mdns_init() {
+  ESP_LOGD(TAG, "Advertising mDNS services");
 
-  ESP_LOGD(TAG, "Configuring PWM timer");
-  ledc_timer_config_t ledc_timer = {
-      .duty_resolution = BLINKEN_RESOLUTION, // resolution of PWM duty
-      .freq_hz = BLINKEN_PWM_HZ,             // frequency of PWM signal
-      .speed_mode = BLINKEN_MODE,            // timer mode
-      .timer_num = BLINKEN_TIMER             // timer index
-  };
-  ledc_timer_config(&ledc_timer);
+  ESP_ERROR_CHECK( mdns_init() );
+  ESP_ERROR_CHECK( mdns_hostname_set(BLINKEN_HOSTNAME) );
+  ESP_ERROR_CHECK( mdns_instance_name_set(BLINKEN_INSTANCE) );
 
-  ESP_LOGD(TAG, "Setting up PWM channels");
-  ledc_channel_config_t ledc_channel[BLINKEN_CH_NUM] = {
-      {.channel = BLINKEN_CHR_CHANNEL,
-       .duty = 0,
-       .gpio_num = BLINKEN_CHR_GPIO,
-       .speed_mode = BLINKEN_MODE,
-       .timer_sel = BLINKEN_TIMER},
-      {.channel = BLINKEN_CHG_CHANNEL,
-       .duty = 0,
-       .gpio_num = BLINKEN_CHG_GPIO,
-       .speed_mode = BLINKEN_MODE,
-       .timer_sel = BLINKEN_TIMER},
-      {.channel = BLINKEN_CHB_CHANNEL,
-       .duty = 0,
-       .gpio_num = BLINKEN_CHB_GPIO,
-       .speed_mode = BLINKEN_MODE,
-       .timer_sel = BLINKEN_TIMER},
-      {.channel = BLINKEN_CHW_CHANNEL,
-       .duty = 0,
-       .gpio_num = BLINKEN_CHW_GPIO,
-       .speed_mode = BLINKEN_MODE,
-       .timer_sel = BLINKEN_TIMER},
+  mdns_txt_item_t serviceTxtData[2] = {
+    {"path", "/led"},
+    {"location", "window"},
   };
 
-  for (int ch = 0; ch < BLINKEN_CH_NUM; ch++) {
-    ledc_channel_config(&ledc_channel[ch]);
-  }
-
-  ESP_LOGD(TAG, "Setting up PWM hardware fading");
-  ledc_fade_func_install(0);
+  ESP_ERROR_CHECK( mdns_service_add(NULL, "_blinken", "_udp", COAP_DEFAULT_PORT, serviceTxtData, 2) );
 }
 
-/*
-Turn values into frequency/resolution-dependent duties.
-Only sets a new value if it differs from the existing.
-*/
-static inline esp_err_t led_set_duty(value_t val, ledc_channel_t channel, int time) {
-  uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
-  ESP_LOGD(TAG, "Setting LED channel %d to %d (%d duty over %dms)", channel, val,
-           duty, time);
-
-  if (time == 0) {
-    return ledc_set_duty(BLINKEN_MODE, channel, duty);
-  } else {
-    return ledc_set_fade_with_time(BLINKEN_MODE, channel, duty, time);
-  }
-}
-
-static inline esp_err_t led_update_duty(ledc_channel_t channel, int time) {
-  ESP_LOGD(TAG, "Updating LED channel %d", channel);
-  if (time == 0) {
-    return ledc_update_duty(BLINKEN_MODE, channel);
-  } else {
-    return ledc_fade_start(BLINKEN_MODE, channel, LEDC_FADE_NO_WAIT);
-  }
-}
-    
-
-/*
-Set all LED channels based on global config.
-Does not set duty if unchanged from previous value.
-*/
-#define ESP_OK_RETURN(x)		     \
-  do {					     \
-    esp_err_t res = x;			     \
-    if (res != ESP_OK) {		     \
-      ESP_LOGE(TAG, "Couldn't update duty"); \
-      return res;			     \
-    }					     \
-  } while(0);
-
-#define ESP_HOLD_ERR(err, x)			\
-  do {						\
-    if (err == ESP_OK) {			\
-      err = x;					\
-    }						\
-  } while(0);
-
-/*
-This function requires error handling due to the following bug:
-https://github.com/espressif/esp-idf/issues/1914
-*/
-esp_err_t led_set(blinken_t *new) {
-  ESP_LOGD(TAG, "Setting all LED channels");
-  
-  ESP_OK_RETURN(led_set_duty(new->red, BLINKEN_CHR_CHANNEL, new->time));
-  ESP_OK_RETURN(led_set_duty(new->green, BLINKEN_CHG_CHANNEL, new->time));
-  ESP_OK_RETURN(led_set_duty(new->blue, BLINKEN_CHB_CHANNEL, new->time));
-  ESP_OK_RETURN(led_set_duty(new->white, BLINKEN_CHW_CHANNEL, new->time));
-
-  ESP_LOGD(TAG, "Updating all LED channels.");
-  esp_err_t res = ESP_OK;
-
-  ESP_HOLD_ERR(res, led_update_duty(BLINKEN_CHR_CHANNEL, new->time));
-  ESP_HOLD_ERR(res, led_update_duty(BLINKEN_CHG_CHANNEL, new->time));
-  ESP_HOLD_ERR(res, led_update_duty(BLINKEN_CHB_CHANNEL, new->time));
-  ESP_HOLD_ERR(res, led_update_duty(BLINKEN_CHW_CHANNEL, new->time));
-
-  if (res != ESP_OK && new != &b) {
-    ESP_LOGE(TAG, "Couldn't set all duties. reverting.");
-    b.time = 0;
-    led_set(&b);
-    return res;
-  }
-
-  if (new != &b) {
-    blinken_copy(new, &b);
-  }
-  return res;
-}
-
+/*******************************************************************************
+ * Main
+ ******************************************************************************/
 void app_main() {
   ESP_ERROR_CHECK( nvs_flash_init() );
   led_init();
   wifi_conn_init();
+  app_mdns_init();
 
-  xTaskCreate(coap_thread, "coap", 4096, NULL, 5, NULL);
+  xTaskCreate(coap_task, "coap", 4096, NULL, 5, NULL);
 }

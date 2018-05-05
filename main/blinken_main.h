@@ -1,7 +1,14 @@
 #pragma once
 
+#define BLINKEN_HOSTNAME CONFIG_HOSTNAME
+#define BLINKEN_INSTANCE CONFIG_INSTANCE
+
+#define BLINKEN_RESOURCE "led"
+
 #define BLINKEN_WIFI_SSID CONFIG_WIFI_SSID
 #define BLINKEN_WIFI_PASSWORD CONFIG_WIFI_PASSWORD
+
+#define BLINKEN_IPV6 CONFIG_BLINKEN_IPV6
 
 #define BLINKEN_TIMER LEDC_TIMER_0 // Use first hardware timer
 #define BLINKEN_MODE LEDC_HIGH_SPEED_MODE // Just use high speed (higher resolution)
@@ -20,3 +27,11 @@
 #define BLINKEN_CHB_CHANNEL LEDC_CHANNEL_2 // LEDC channel for blue strip
 #define BLINKEN_CHW_GPIO CONFIG_W_GPIO     // GPIO output for white strip
 #define BLINKEN_CHW_CHANNEL LEDC_CHANNEL_3 // LEDC channel for white strip
+
+    
+#define ESP_HOLD_ERR(err, x)			\
+  do {						\
+    if (err == ESP_OK) {			\
+      err = x;					\
+    }						\
+  } while(0);

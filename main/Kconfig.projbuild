@@ -5,17 +5,35 @@ config WIFI_SSID
 	string "WiFi SSID"
 	default "myssid"
 	help
-		SSID (network name) for the example to connect to.
+		SSID (network name) to connect to.
 
 config WIFI_PASSWORD
 	string "WiFi Password"
 	default "mypassword"
 	help
-		WiFi password (WPA or WPA2) for the example to use.
+		WiFi password (WPA or WPA2) to use.
+
+config HOSTNAME
+	string "Hostname"
+	default "blinken"
+	help
+		Device hostname.
+
+config INSTANCE
+	string "Instance"
+	default "Smart LED strip"
+	help
+		Device description.
+
+config BLINKEN_IPV6
+	bool "IPv6 support"
+	default n
+	help
+		(CURRENTLY BROKEN) Use IPv6 sockets.
 
 config PWM_HZ
-    int "PWM Frequency (Hz)"
-        range 0 78125
+	int "PWM Frequency (Hz)"
+	range 0 78125
 	default 5000
 	help
 		Frequency for LED PWM.
@@ -25,31 +43,31 @@ config PWM_HZ
 		pwm_resolution=10  // 10 bit
 
 config R_GPIO
-    int "GPIO Pin (Red Channel)"
-        range 0 34
+	int "GPIO Pin (Red Channel)"
+	range 0 34
 	default 22
 	help
-	        GPIO number (IOxx) to use for red LED strip.
+		GPIO number (IOxx) to use for red LED strip.
 
 config G_GPIO
-    int "GPIO Pin (Green Channel)"
-        range 0 34
+	int "GPIO Pin (Green Channel)"
+	range 0 34
 	default 23
 	help
-	        GPIO number (IOxx) to use for green LED strip.
+		GPIO number (IOxx) to use for green LED strip.
 
 config B_GPIO
-    int "GPIO Pin (Blue Channel)"
-        range 0 34
+	int "GPIO Pin (Blue Channel)"
+	range 0 34
 	default 16
 	help
-	        GPIO number (IOxx) to use for blue LED strip.
+		GPIO number (IOxx) to use for blue LED strip.
 
 config W_GPIO
-    int "GPIO Pin (White Channel)"
-        range 0 34
+	int "GPIO Pin (White Channel)"
+	range 0 34
 	default 15
 	help
-	        GPIO number (IOxx) to use for white LED strip.
+		GPIO number (IOxx) to use for white LED strip.
 
 endmenu
