@@ -118,7 +118,7 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   if (ptr != raw) {
     ESP_LOGD(TAG, "Setting LEDs: %s", raw);
     // Update global config and set LEDs
-    if (led_set(&res) != ESP_OK) {
+    if (led_set(&res) == ESP_OK) {
       ESP_LOGD(TAG, "LED update successful.");
       resource->dirty = 1;
       response->hdr->code = COAP_RESPONSE_CODE(204);
