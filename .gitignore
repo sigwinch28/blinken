@@ -1,9 +1,12 @@
 .venv/
 compile_commands.json
 /build
+/dist/
+*.egg-info
 sdkconfig
 sdkconfig.old
 *.o
 *.so
 *.a
+*.pyc
 /MANIFEST

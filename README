@@ -1,3 +1,78 @@
 # Blinken
 
-ESP32 source code for my PWM LED strip controller. Uses esp-idf.
+Source code for the `blinken` project, an ESP32-based smart LED strip complete
+with line protocol library and python bindings.
+
+## Building
+
+```
+make all test
+```
+
+Output in `build/`.
+
+### Requirements
+
+- GNU Make
+- [Check](https://libcheck.github.io/check/)
+- [ESP-IDF](http://esp-idf.readthedocs.io/)
+- Python 2.7 dev headers (`libpython2.7-dev` on debian)
+
+## Library
+
+```
+make lib
+```
+
+A shared library for parsing and generating messages used in the wire protocol.
+
+The format is relatively simple:
+
+### Wire format
+
+```
+DIGIT = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+
+CHANNEL_FIELD = 'R' | 'G' | 'B' | 'W'
+TIME_FIELD    = 'T'
+
+CHANNEL_VALUE = DIGIT+ # value 0-255 inclusive, optional leading zeroes
+TIME_VALUE    = DIGIT+ # value 0-2147483647 inclusive, optional leading zeroes
+
+CHANNEL_SETTING = CHANNEL_FIELD CHANNEL_VALUE
+TIME_SETTING    = TIME_FIELD    TIME_VALUE
+
+SETTING = CHANNEL_SETTING | TIME_SETTING
+
+MESSAGE = SETTING+
+```
+
+#### Examples
+
+| Message      | Red | Green   | Blue    | White   | Time    |
+| `R0G0B0W0T0` | 0   | 0       | 0       | 0       | 0ms     |
+| `R255T1000`  | 255 | not set | not set | not set | 1000ms  |
+| `R0G255`     | 0   | 255     | not set | not set | not set |
+
+
+## Python Library
+
+```
+make python
+```
+
+This is a C extension for python 2. The above command invokes
+`python2 setup.py sdist` with a custom build target directory.
+
+## ESP32 source code
+
+```
+export ESP_PATH="../path/to/esp-toolchain"
+export PATH="$ESP_PATH:$PATH"
+export IDF_PATH="../path/to/esp-idf"
+
+cd esp
+make menuconfig # configure "Blinken" component
+make all
+make flash # with esp plugged in
+```

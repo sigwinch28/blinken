@@ -1,6 +1,6 @@
 # Globals
 CFLAGS += -O0 -I$(LIBDIR)/include
-LDFLAGS += -L$(LIBDIR) -I$(LIBDIR)/include
+LDFLAGS += -L$(BUILDDIR) -I$(LIBDIR)/include
 
 BUILDDIR = ./build
 
@@ -31,7 +31,7 @@ ESPDIR = ./esp
 # Python
 PYTHONBUILDDIR = $(BUILDDIR)/python
 PYTHONDIR = ./python
-PYTHON ?= python2
+PYTHON ?= python3
 PYTHONSETUP ?= setup.py
 PYTHONDIST = ./sdist
 
@@ -45,14 +45,8 @@ all: lib python esp
 
 check: test
 
-foo:
-	echo $(LIBOBJS)
-	echo $(LIBBUILDDIR)
-
 clean:
 	-$(RM) -rf $(BUILDDIR)
-	-$(PYTHON) $(PYTHONSETUP) clean
-	$(MAKE) -C $(ESPDIR) -s clean
 
 compile_commands.json: FORCE
 	+bear --append --use-cc $(CC) $(MAKE) all
@@ -69,6 +63,7 @@ $(LIBOBJS): $(LIBBUILDDIR)/%.o: $(LIBDIR)/%.c | $(LIBBUILDDIR)
 	$(COMPILE.c) $(OUTPUT_OPTION) $<
 
 $(SHAREDLIB): LDLIBS=
+$(SHAREDLIB): LDFLAGS=
 $(SHAREDLIB): CFLAGS += -fPIC -shared
 $(SHAREDLIB): $(LIBOBJS)
 	$(LINK.c) $^ $(LDLIBS) -o $@
@@ -86,10 +81,10 @@ $(TESTBUILDDIR):
 	mkdir -p $@
 
 $(TESTBIN): OBJS=$(TESTOBJS)
-$(TESTBIN): $(TESTOBJS) $(SHAREDLIBS)
+
 $(TESTBIN): CFLAGS += $(shell pkg-config --cflags check)
 $(TESTBIN): LDLIBS += -lbproto $(shell pkg-config --libs check)
-$(TESTBIN):
+$(TESTBIN): $(TESTOBJS) $(SHAREDLIB)
 	$(BIN.c) -o $@
 
 $(TESTOBJS): $(TESTBUILDDIR)/%.o: $(TESTDIR)/%.c | $(TESTBUILDDIR)
@@ -97,7 +92,7 @@ $(TESTOBJS): $(TESTBUILDDIR)/%.o: $(TESTDIR)/%.c | $(TESTBUILDDIR)
 
 test: VALGRINDFLAGS += --quiet
 test: $(TESTBIN)
-	export LD_LIBRARY_PATH=$(LIBDIR); \
+	export LD_LIBRARY_PATH=$(BUILDDIR); \
 	export CK_VERBOSITY=$(CK_VERBOSITY); \
 	$(VALGRIND) $(VALGRINDFLAGS) $(TESTBIN)
 

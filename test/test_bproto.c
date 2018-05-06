@@ -19,21 +19,19 @@
     BPROTO_FIELD_WHITE, b.white, \
     BPROTO_FIELD_TIME,  b.time ) == -1)
 */
-#define TEST_BPROTO_ASSERT_ZERO(b) \
-  ck_assert(b.red   == 0); \
-  ck_assert(b.green == 0); \
-  ck_assert(b.blue  == 0); \
-  ck_assert(b.white == 0); \
-  ck_assert(b.time  == 0); \
-  /*
-#define TEST_BPROTO_ASSERT_EQ(x, y) \
-  TEST_ASSERT(x.red   == y.red);   \
-  TEST_ASSERT(x.green == y.green); \
-  TEST_ASSERT(x.blue  == y.blue);  \
-  TEST_ASSERT(x.white == y.white); \
-  TEST_ASSERT(x.time  == y.time);
+#define TEST_BPROTO_ASSERT_UNSET(b)				   \
+  ck_assert_int_eq(b.red,   BPROTO_VALUE_UNSET);		   \
+  ck_assert_int_eq(b.green, BPROTO_VALUE_UNSET);		   \
+  ck_assert_int_eq(b.blue,  BPROTO_VALUE_UNSET);		   \
+  ck_assert_int_eq(b.white, BPROTO_VALUE_UNSET);		   \
+  ck_assert_int_eq(b.time,  BPROTO_TIME_UNSET);
 
-*/
+#define TEST_BPROTO_ASSERT_EQ(x, y)	    \
+  ck_assert_int_eq(x.red,   y.red);	    \
+  ck_assert_int_eq(x.green, y.green);	    \
+  ck_assert_int_eq(x.blue,  y.blue);	    \
+  ck_assert_int_eq(x.white, y.white);	    \
+  ck_assert_int_eq(x.time,  y.time);
 
 #define TEST_ASSERT(x) ck_assert(x)
 #define TEST_ASSERT_FALSE(x) TEST_ASSERT(!(x))
@@ -42,13 +40,21 @@ START_TEST(test_bproto_init)
 {
   bproto_t b;
   bproto_init(&b);
-  TEST_BPROTO_ASSERT_ZERO(b);
+  TEST_BPROTO_ASSERT_UNSET(b);
+}
+END_TEST
+
+START_TEST(test_bproto_copy)
+{
+  bproto_t b, c;
+  bproto_init(&b);
+  bproto_copy(&b, &c);
+  TEST_BPROTO_ASSERT_EQ(b, c);
 }
 END_TEST
 
 START_TEST(test_bproto_field_parse_null)
 {
-
   char raw = '\0';
   bproto_field_t field;
   char *res = bproto_field_parse(&field, &raw);
@@ -255,9 +261,11 @@ int main() {
 
 Suite *bproto_suite(void) {
   Suite *s = suite_create("bproto");
+  
   TCase *tc_proto_t = tcase_create("bproto_t");
-
+  
   tcase_add_test(tc_proto_t, test_bproto_init);
+  tcase_add_test(tc_proto_t, test_bproto_copy);
   suite_add_tcase(s, tc_proto_t);
 
   TCase *tc_field_parse = tcase_create("field_parse");

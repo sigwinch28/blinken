@@ -3,11 +3,15 @@
 #include <limits.h>
 #include <stdint.h>
 
-typedef uint8_t bproto_value_t;
-#define BPROTO_VALUE_T_MAX UINT8_MAX
+typedef int16_t bproto_value_t;
+#define BPROTO_VALUE_T_MIN (0)
+#define BPROTO_VALUE_T_MAX (255)
+#define BPROTO_VALUE_UNSET (-1)
 
-typedef int bproto_time_t;
-#define BPROTO_TIME_T_MAX INT_MAX
+typedef int32_t bproto_time_t;
+#define BPROTO_TIME_T_MIN (0)
+#define BPROTO_TIME_T_MAX (2147483647)
+#define BPROTO_TIME_UNSET (-1)
 
 typedef uint8_t bproto_digit_t;
 
@@ -29,6 +33,10 @@ typedef enum {
 void bproto_init(bproto_t*);
 
 void bproto_copy(bproto_t*, bproto_t*);
+
+int bproto_eq(bproto_t*, bproto_t*);
+
+int bproto_is_set(bproto_t*);
 
 char *bproto_parse(bproto_t*, const char*);
 

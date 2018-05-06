@@ -1,4 +1,4 @@
-#include <python2.7/Python.h>
+#include <python3.7/Python.h>
 #include <stdio.h>
 #include "bproto.h"
 
@@ -34,18 +34,28 @@ static PyMethodDef PybprotoMethods[] = {
   {NULL, NULL, 0, NULL} /* Sentinel */
 };
 
+static struct PyModuleDef pybprotomodule = {
+  PyModuleDef_HEAD_INIT,
+  "pybproto",
+  NULL,
+  -1,
+  PybprotoMethods,
+};
+
 PyMODINIT_FUNC
-initpybproto(void) {
+PyInit_pybproto(void) {
   PyObject *m;
 
-  m = Py_InitModule("pybproto", PybprotoMethods);
+  m = PyModule_Create(&pybprotomodule);
   if (m == NULL) {
-    return;
+    return NULL;
   }
 
   PybprotoError = PyErr_NewException("pybproto.error", NULL, NULL);
   Py_INCREF(PybprotoError);
   PyModule_AddObject(m, "error", PybprotoError);
+
+  return m;
 }
 
 static PyObject *bproto_to_pyobject(bproto_t *b) {
@@ -62,7 +72,7 @@ static PyObject *pybproto_parse(PyObject *self, PyObject *args) {
   bproto_init(&b);
 
   char *raw;
-  if (!PyArg_ParseTuple(args, "s!", &PyString_Type, &raw)) {
+  if (!PyArg_ParseTuple(args, "s", &raw)) {
     return NULL;
   }
 
@@ -76,14 +86,20 @@ static PyObject *pybproto_parse(PyObject *self, PyObject *args) {
   return bproto_to_pyobject(&b);
 }
 
+enum KEY_TO_LONG_ERR {
+  KTL_OK = 0,
+  KTL_UNSET,
+  KTL_ERR,
+};
+
+
 static int pybproto_key_to_long(PyObject *dict, char *key, long *dst) {
   PyObject *item = PyDict_GetItemString(dict, key);
   if (item == NULL) {
-    *dst = 0;
-    return 1;
+    return KTL_UNSET;
   }
 
-  *dst = PyInt_AsLong(item);
+  *dst = PyLong_AsLong(item);
   if (*dst == -1 && PyErr_Occurred()) {
     char *err;
     if (asprintf(&err, "Invalid numeric value in '%s'", key) != -1) {
@@ -92,14 +108,14 @@ static int pybproto_key_to_long(PyObject *dict, char *key, long *dst) {
       PyErr_SetString(PyExc_ValueError, "Invalid numeric value");
     }
     free(err);
-    return 0;
+    return KTL_ERR;
   }
 
-  return 1;
+  return KTL_OK;
 }
 
 static int pybproto_long_to_value_t(long src, bproto_value_t *dst) {
-  if (src >= 0 && src <= BPROTO_VALUE_T_MAX) {
+  if (src >= BPROTO_VALUE_T_MIN && src <= BPROTO_VALUE_T_MAX) {
     *dst = (bproto_value_t) src;
     return 1;
   } else {
@@ -115,7 +131,7 @@ static int pybproto_long_to_value_t(long src, bproto_value_t *dst) {
 }
 
 static int pybproto_long_to_time_t(long src, bproto_time_t *dst) {
-  if (src >= 0 && src <= BPROTO_TIME_T_MAX) {
+  if (src >= BPROTO_TIME_T_MIN && src <= BPROTO_TIME_T_MAX) {
     *dst = (bproto_time_t) src;
     return 1;
   } else {
@@ -130,11 +146,17 @@ static int pybproto_long_to_time_t(long src, bproto_time_t *dst) {
   }
 }
 
-#define RETURN_IF_FALSE(x)      \
-  do {			       \
-    if (!x) {		       \
-      return NULL;	       \
-    }			       \
+#define DO_IF_OK(err, x)			\
+  do {						\
+    switch(err) {				\
+    case(KTL_OK):				\
+      x;					\
+      break;					\
+    case(KTL_UNSET):				\
+      break;					\
+    case(KTL_ERR):				\
+      return NULL;				\
+    }						\
   } while(0);
 
 static PyObject *pybproto_new(PyObject *self, PyObject *args) {
@@ -148,28 +170,28 @@ static PyObject *pybproto_new(PyObject *self, PyObject *args) {
   bproto_init(&b);
   long res;
 
-  RETURN_IF_FALSE(pybproto_key_to_long(dict, PYBPROTO_KEY_RED, &res));
-  RETURN_IF_FALSE(pybproto_long_to_value_t(res, &b.red));
+  DO_IF_OK(pybproto_key_to_long(dict, PYBPROTO_KEY_RED, &res),
+	   pybproto_long_to_value_t(res, &b.red));
 
-  RETURN_IF_FALSE(pybproto_key_to_long(dict, PYBPROTO_KEY_GREEN, &res));
-  RETURN_IF_FALSE(pybproto_long_to_value_t(res, &b.green));
+  DO_IF_OK(pybproto_key_to_long(dict, PYBPROTO_KEY_GREEN, &res),
+	   pybproto_long_to_value_t(res, &b.green));
 
-  RETURN_IF_FALSE(pybproto_key_to_long(dict, PYBPROTO_KEY_BLUE, &res));
-  RETURN_IF_FALSE(pybproto_long_to_value_t(res, &b.blue));
+  DO_IF_OK(pybproto_key_to_long(dict, PYBPROTO_KEY_BLUE, &res),
+	   pybproto_long_to_value_t(res, &b.blue));
 
-  RETURN_IF_FALSE(pybproto_key_to_long(dict, PYBPROTO_KEY_WHITE, &res));
-  RETURN_IF_FALSE(pybproto_long_to_value_t(res, &b.white));
+  DO_IF_OK(pybproto_key_to_long(dict, PYBPROTO_KEY_WHITE, &res),
+	   pybproto_long_to_value_t(res, &b.white));
 
-  
-  RETURN_IF_FALSE(pybproto_key_to_long(dict, PYBPROTO_KEY_TIME, &res));
-  RETURN_IF_FALSE(pybproto_long_to_time_t(res, &b.time));
+  DO_IF_OK(pybproto_key_to_long(dict, PYBPROTO_KEY_TIME, &res),
+	   pybproto_long_to_time_t(res, &b.time));
 
   char *ptr = buf;
-  
-  if(bproto_snprint(&ptr, PYBPROTO_MAX_LEN, &b)) {
+  int bytes = bproto_snprint(&ptr, PYBPROTO_MAX_LEN-1, &b);
+  buf[bytes] = '\0';
+  if(bytes > 0 || !bproto_is_set(&b)) {
     return Py_BuildValue("s", buf);
   } else {
-    PyErr_SetString(PyExc_ValueError, "Internal buffer too small");
+    PyErr_SetString(PyExc_ValueError, "Internal buffer too small.");
     return NULL;
   }
 }
