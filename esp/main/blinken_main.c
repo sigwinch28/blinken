@@ -16,7 +16,7 @@
 #include <stdio.h>
 
 #include "blinken_main.h"
-#include "parser.h"
+#include "bproto.h"
 
 static const char *TAG = "blinken";
 
@@ -91,13 +91,13 @@ static void wifi_conn_init() {
 /*******************************************************************************
  * LED control
  ******************************************************************************/
-static blinken_t b;
+static bproto_t b;
 
 static void led_init() {
   ESP_LOGI(TAG, "Initialising LED PWM");
 
   // Clear current configuration, ready for future updates via COAP
-  blinken_init(&b);
+  bproto_init(&b);
 
   ESP_LOGD(TAG, "Configuring PWM timer");
   ledc_timer_config_t ledc_timer = {
@@ -145,8 +145,8 @@ static void led_init() {
   ledc_fade_func_install(0);
 }
 
-static inline esp_err_t led_set_duty(ledc_channel_t channel, value_t val, int time) {
-  uint32_t duty = val * BLINKEN_MAX_DUTY / VALUE_T_MAX;
+static inline esp_err_t led_set_duty(ledc_channel_t channel, bproto_value_t val, bproto_time_t time) {
+  uint32_t duty = val * BLINKEN_MAX_DUTY / BPROTO_VALUE_T_MAX;
   ESP_LOGD(TAG, "Setting LED channel. channel=%d, val=%d, time=%d, duty=%d",
 	   channel, val, time, duty);
 
@@ -158,7 +158,7 @@ static inline esp_err_t led_update_duty(ledc_channel_t channel) {
   return ledc_fade_start(BLINKEN_MODE, channel, LEDC_FADE_NO_WAIT);
 }
 
-esp_err_t led_set_channel(ledc_channel_t channel, value_t val, int time) {
+esp_err_t led_set_channel(ledc_channel_t channel, bproto_value_t val, bproto_time_t time) {
   esp_err_t res = led_set_duty(channel, val, time);
   if (res != ESP_OK) {
     return res;
@@ -166,7 +166,7 @@ esp_err_t led_set_channel(ledc_channel_t channel, value_t val, int time) {
   return led_update_duty(channel);
 }
 
-esp_err_t led_set(blinken_t *new) {
+esp_err_t led_set(bproto_t *new) {
   
   ESP_LOGD(TAG, "Updating all LED channels.");
   esp_err_t res = ESP_OK;
@@ -184,7 +184,7 @@ esp_err_t led_set(blinken_t *new) {
   }
 
   if (new != &b) {
-    blinken_copy(new, &b);
+    bproto_copy(new, &b);
   }
   return res;
 }
@@ -192,6 +192,8 @@ esp_err_t led_set(blinken_t *new) {
 /*******************************************************************************
  * COAP
  ******************************************************************************/
+#define COAP_BUF_LEN (32)
+
 static void
 led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
 		const coap_endpoint_t *local_interface, coap_address_t *peer,
@@ -202,12 +204,12 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
 
   // Copy and null-terminate the data.
   coap_get_data(request, &size, &data);
-  char raw[PARSER_BUF_LEN];
+  char raw[COAP_BUF_LEN];
   int len;
-  if (size < PARSER_BUF_LEN-2) {
+  if (size < COAP_BUF_LEN-2) {
     len = size;
   } else {
-    len = PARSER_BUF_LEN-2;
+    len = COAP_BUF_LEN-2;
   }
   strncpy(raw, (char*)data, len);
   // If the copied data is of length `len`, it is not null-terminated, so
@@ -215,12 +217,12 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   raw[len] = '\0';
 
   // Make copy of current values for update
-  blinken_t res;
-  blinken_copy(&b, &res);
+  bproto_t res;
+  bproto_copy(&b, &res);
   res.time = 0; // We don't want to preserve time
 
   // Parse the payload
-  char *ptr = blinken_parse(&res, raw);
+  char *ptr = bproto_parse(&res, raw);
   
   if (ptr != raw) {
     ESP_LOGD(TAG, "Setting LEDs: %s", raw);
@@ -239,6 +241,7 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   }
 }
 
+
 static void
 led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
 		const coap_endpoint_t *local_interface, coap_address_t *peer,
@@ -248,9 +251,9 @@ led_handler_get(coap_context_t *ctx, struct coap_resource_t *resource,
   unsigned char buf[3];
 
   // Serialize current config
-  char data[PARSER_BUF_LEN];
+  char data[COAP_BUF_LEN];
   char *ptr = data;
-  int len = blinken_snprint(&ptr, PARSER_BUF_LEN, &b);
+  int len = bproto_snprint(&ptr, COAP_BUF_LEN, &b);
 
   // Set response code and send payload
   response->hdr->code = COAP_RESPONSE_CODE(205);

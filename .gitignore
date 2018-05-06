@@ -1,5 +1,9 @@
+.venv/
 compile_commands.json
-build/
+/build
 sdkconfig
 sdkconfig.old
 *.o
+*.so
+*.a
+/MANIFEST
