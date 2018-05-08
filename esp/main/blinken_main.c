@@ -98,6 +98,11 @@ static void led_init() {
 
   // Clear current configuration, ready for future updates via COAP
   bproto_init(&b);
+  b.red = 0;
+  b.green = 0;
+  b.blue = 0;
+  b.white = 0;
+  b.time = 0;
 
   ESP_LOGD(TAG, "Configuring PWM timer");
   ledc_timer_config_t ledc_timer = {
@@ -146,6 +151,9 @@ static void led_init() {
 }
 
 static inline esp_err_t led_set_duty(ledc_channel_t channel, bproto_value_t val, bproto_time_t time) {
+  if (time == BPROTO_TIME_UNSET) {
+    time = 0;
+  }
   uint32_t duty = val * BLINKEN_MAX_DUTY / BPROTO_VALUE_T_MAX;
   ESP_LOGD(TAG, "Setting LED channel. channel=%d, val=%d, time=%d, duty=%d",
 	   channel, val, time, duty);
@@ -159,6 +167,9 @@ static inline esp_err_t led_update_duty(ledc_channel_t channel) {
 }
 
 esp_err_t led_set_channel(ledc_channel_t channel, bproto_value_t val, bproto_time_t time) {
+  if (val == BPROTO_VALUE_UNSET) {
+    return ESP_OK;
+  }
   esp_err_t res = led_set_duty(channel, val, time);
   if (res != ESP_OK) {
     return res;
@@ -216,10 +227,8 @@ led_handler_put(coap_context_t *ctx, struct coap_resource_t *resource,
   // we must do it ourselves.
   raw[len] = '\0';
 
-  // Make copy of current values for update
   bproto_t res;
-  bproto_copy(&b, &res);
-  res.time = 0; // We don't want to preserve time
+  bproto_init(&res);
 
   // Parse the payload
   char *ptr = bproto_parse(&res, raw);
@@ -268,7 +277,7 @@ static void coap_task(void *p) {
   fd_set readfds;
   
   ESP_LOGD(TAG, "Starting COAP server. Waiting for WiFi...");
-  xEventGroupWaitBits(wifi_event_group, IPV4_CONNECTED_BIT | IPV6_CONNECTED_BIT,
+  xEventGroupWaitBits(wifi_event_group, IPV4_CONNECTED_BIT,
 		      false, true, portMAX_DELAY);
   ESP_LOGD(TAG, "WiFi connected. Continuing with COAP server startup.");
 

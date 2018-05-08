@@ -26,12 +26,12 @@
   ck_assert_int_eq(b.white, BPROTO_VALUE_UNSET);		   \
   ck_assert_int_eq(b.time,  BPROTO_TIME_UNSET);
 
-#define TEST_BPROTO_ASSERT_EQ(x, y)	    \
-  ck_assert_int_eq(x.red,   y.red);	    \
-  ck_assert_int_eq(x.green, y.green);	    \
-  ck_assert_int_eq(x.blue,  y.blue);	    \
-  ck_assert_int_eq(x.white, y.white);	    \
-  ck_assert_int_eq(x.time,  y.time);
+#define TEST_BPROTO_ASSERT_EQ(x, y)					\
+  ck_assert(x.red   == y.red   || x.red   == BPROTO_VALUE_UNSET);	\
+  ck_assert(x.green == y.green || x.green == BPROTO_VALUE_UNSET);	\
+  ck_assert(x.blue  == y.blue  || x.blue  == BPROTO_VALUE_UNSET);	\
+  ck_assert(x.white == y.white || x.white == BPROTO_VALUE_UNSET);	\
+  ck_assert(x.time  == y.time  || x.time  == BPROTO_TIME_UNSET);
 
 #define TEST_ASSERT(x) ck_assert(x)
 #define TEST_ASSERT_FALSE(x) TEST_ASSERT(!(x))

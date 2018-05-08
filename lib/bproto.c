@@ -14,11 +14,25 @@ void bproto_init(bproto_t *b) {
 y is target
 */
 void bproto_copy(bproto_t *x, bproto_t *y) {
-  y->red = x->red;
-  y->green = x->green;
-  y->blue = x->blue;
-  y->white = x->white;
-  y->time = x->time;
+  if (x->red != BPROTO_VALUE_UNSET) {
+    y->red = x->red;
+  }
+
+  if (x->green != BPROTO_VALUE_UNSET) {
+    y->green = x->green;
+  }
+
+  if (x->blue != BPROTO_VALUE_UNSET) {
+    y->blue = x->blue;
+  }
+  
+  if (x->white != BPROTO_VALUE_UNSET) {
+    y->white = x->white;
+  }
+  
+  if (x->time != BPROTO_TIME_UNSET) {
+    y->time = x->time;
+  }
 }
 
 int bproto_eq(bproto_t *x, bproto_t *y) {
